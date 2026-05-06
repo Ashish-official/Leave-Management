@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import LeaveBalance from '../models/LeaveBalance.js';
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -32,6 +33,7 @@ export const register = async (req, res) => {
       email,
       password: hashedPassword,
     });
+    await LeaveBalance.createDefaultForEmployee(user._id);
 
     return res.status(201).json({
       token: generateToken(user),

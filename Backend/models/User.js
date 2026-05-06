@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-// User schema stores employee/admin details and leave balance
+// User schema stores employee/admin account details
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -22,11 +22,7 @@ const userSchema = new mongoose.Schema({
     enum: ['employee', 'admin'],
     default: 'employee',
   },
-  leaveBalance: {
-    type: Number,
-    default: 12,
-  },
-},{ timestamps: true });
+}, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
 export default User;

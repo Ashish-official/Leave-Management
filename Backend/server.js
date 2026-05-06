@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
-import leaveRoutes from './routes/leaves.js';
+import leaveRoutes from './routes/leaveRoutes.js';
 
 dotenv.config();
 

@@ -19,3 +19,5 @@ Thumbs.db
 # Build output
 backend/dist/
 frontend/build/
+frontend/dist/
+Frontend/dist/

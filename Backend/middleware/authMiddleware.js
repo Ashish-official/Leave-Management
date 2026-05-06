@@ -1,12 +1,18 @@
 import jwt from 'jsonwebtoken';
 
+const createError = (message, statusCode) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
 /**
  * Verify JWT token from the Authorization header and attach decoded payload to req.user.
  */
 export const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Unauthorized' });
+    return next(createError('Unauthorized', 401));
   }
 
   const token = authHeader.split(' ')[1];
@@ -15,12 +21,12 @@ export const verifyToken = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (error) {
-    return res.status(401).json({ message: 'Unauthorized' });
+    next(createError('Unauthorized', 401));
   }
 };
 export const isAdmin = (req, res, next) => {
   if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Forbidden' });
+    return next(createError('Forbidden', 403));
   }
 
   next();

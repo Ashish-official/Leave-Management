@@ -4,6 +4,7 @@ import cors from 'cors';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
 import leaveRoutes from './routes/leaveRoutes.js';
+import errorHandler from './middleware/errorHandler.js';
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/leaves', leaveRoutes);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 

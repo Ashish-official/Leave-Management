@@ -3,6 +3,14 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import LeaveBalance from '../models/LeaveBalance.js';
 
+const createError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const generateToken = (user) => {
   return jwt.sign(
     { id: user._id, name: user.name, role: user.role },
@@ -14,23 +22,45 @@ const generateToken = (user) => {
 /**
  * Register a new user and return a JWT token with user details.
  */
-export const register = async (req, res) => {
+export const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
+    const trimmedName = name ? String(name).trim() : '';
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : '';
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: 'Name, email, and password are required.' });
+    if (!name) {
+      throw createError('Name is required');
     }
 
-    const existingUser = await User.findOne({ email });
+    if (trimmedName.length < 2) {
+      throw createError('Name must be at least 2 characters');
+    }
+
+    if (!email) {
+      throw createError('Email is required');
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      throw createError('Email must be a valid email address');
+    }
+
+    if (!password) {
+      throw createError('Password is required');
+    }
+
+    if (String(password).length < 6) {
+      throw createError('Password must be at least 6 characters');
+    }
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
-      return res.status(400).json({ message: 'User already exists.' });
+      throw createError('User already exists');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({
-      name,
-      email,
+      name: trimmedName,
+      email: normalizedEmail,
       password: hashedPassword,
     });
     await LeaveBalance.createDefaultForEmployee(user._id);
@@ -42,29 +72,34 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Registration failed.' });
+    next(error);
   }
 };
 
 /**
  * Authenticate a user and return a JWT token with user details.
  */
-export const login = async (req, res) => {
+export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : '';
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
+    if (!email) {
+      throw createError('Email is required');
     }
 
-    const user = await User.findOne({ email });
+    if (!password) {
+      throw createError('Password is required');
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials.' });
+      throw createError('Invalid credentials');
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials.' });
+      throw createError('Invalid credentials');
     }
 
     return res.json({
@@ -74,6 +109,6 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Login failed.' });
+    next(error);
   }
 };

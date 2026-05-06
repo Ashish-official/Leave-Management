@@ -3,6 +3,12 @@ import LeaveBalance from '../models/LeaveBalance.js';
 
 const validLeaveTypes = ['sick', 'casual', 'annual'];
 
+const createError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
 const getLeaveDays = (startDate, endDate) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -13,46 +19,66 @@ const getLeaveDays = (startDate, endDate) => {
 
 const getEmployeeId = (req) => req.user._id || req.user.id;
 
-export const applyLeave = async (req, res) => {
+export const applyLeave = async (req, res, next) => {
   try {
     const employeeId = getEmployeeId(req);
     const { leaveType, startDate, endDate, reason } = req.body;
+    const trimmedReason = reason ? String(reason).trim() : '';
 
-    if (!leaveType || !startDate || !endDate || !reason) {
-      return res.status(400).json({ message: 'leaveType, startDate, endDate and reason are required.' });
+    if (!leaveType) {
+      throw createError('Leave type is required');
     }
 
     const normalizedType = String(leaveType).toLowerCase();
     if (!validLeaveTypes.includes(normalizedType)) {
-      return res.status(400).json({ message: 'leaveType must be one of sick, casual, or annual.' });
+      throw createError('Leave type must be one of: sick, casual, annual');
+    }
+
+    if (!startDate) {
+      throw createError('Start date is required');
+    }
+
+    if (!endDate) {
+      throw createError('End date is required');
+    }
+
+    if (!trimmedReason) {
+      throw createError('Reason is required');
     }
 
     const start = new Date(startDate);
     const end = new Date(endDate);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return res.status(400).json({ message: 'startDate and endDate must be valid dates.' });
+      throw createError('Start date and end date must be valid dates');
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDay = new Date(start);
+    startDay.setHours(0, 0, 0, 0);
+
+    if (startDay < today) {
+      throw createError('Start date cannot be in the past');
     }
 
     if (start > end) {
-      return res.status(400).json({ message: 'startDate must be before or equal to endDate.' });
+      throw createError('End date must be greater than or equal to start date');
     }
 
     const daysRequested = getLeaveDays(start, end);
     if (daysRequested <= 0) {
-      return res.status(400).json({ message: 'The requested leave duration must be at least one day.' });
+      throw createError('The requested leave duration must be at least one day');
     }
 
     const balance = await LeaveBalance.createDefaultForEmployee(employeeId);
 
     const availableDays = balance[normalizedType];
     if (availableDays === undefined) {
-      return res.status(500).json({ message: 'Leave balance type not configured.' });
+      throw createError('Leave balance type not configured', 500);
     }
 
     if (availableDays < daysRequested) {
-      return res.status(400).json({
-        message: `Insufficient ${normalizedType} leave balance. You have ${availableDays} day(s) available.`,
-      });
+      throw createError(`Insufficient leave balance for ${normalizedType} leave`);
     }
 
     const leaveRequest = await LeaveRequest.create({
@@ -60,40 +86,40 @@ export const applyLeave = async (req, res) => {
       leaveType: normalizedType,
       startDate: start,
       endDate: end,
-      reason,
+      reason: trimmedReason,
       status: 'PENDING',
     });
 
     return res.status(201).json(leaveRequest);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Failed to apply for leave.' });
+    next(error);
   }
 };
 
-export const getMyLeaves = async (req, res) => {
+export const getMyLeaves = async (req, res, next) => {
   try {
     const employeeId = getEmployeeId(req);
     const leaves = await LeaveRequest.find({ userId: employeeId }).sort({ createdAt: -1 });
     return res.json(leaves);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Failed to load your leave requests.' });
+    next(error);
   }
 };
 
-export const getMyLeaveBalance = async (req, res) => {
+export const getMyLeaveBalance = async (req, res, next) => {
   try {
     const employeeId = getEmployeeId(req);
     const balance = await LeaveBalance.createDefaultForEmployee(employeeId);
     return res.json(balance);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Failed to load leave balance.' });
+    next(error);
   }
 };
 
-export const getAllLeaves = async (req, res) => {
+export const getAllLeaves = async (req, res, next) => {
   try {
     const leaves = await LeaveRequest.find()
       .populate('userId', 'name email role')
@@ -102,25 +128,25 @@ export const getAllLeaves = async (req, res) => {
     return res.json(leaves);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Failed to load leave requests.' });
+    next(error);
   }
 };
 
-export const updateLeaveStatus = async (req, res) => {
+export const updateLeaveStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
 
     if (!['APPROVED', 'REJECTED'].includes(status)) {
-      return res.status(400).json({ message: 'Status must be APPROVED or REJECTED.' });
+      throw createError('Status must be APPROVED or REJECTED');
     }
 
     const leaveRequest = await LeaveRequest.findById(req.params.id);
     if (!leaveRequest) {
-      return res.status(404).json({ message: 'Leave request not found.' });
+      throw createError('Leave request not found', 404);
     }
 
     if (leaveRequest.status !== 'PENDING') {
-      return res.status(400).json({ message: 'Only pending leave requests can be updated.' });
+      throw createError('Only pending leave requests can be updated');
     }
 
     if (status === 'APPROVED') {
@@ -129,9 +155,7 @@ export const updateLeaveStatus = async (req, res) => {
       const availableDays = balance[leaveRequest.leaveType];
 
       if (availableDays < daysRequested) {
-        return res.status(400).json({
-          message: `Insufficient ${leaveRequest.leaveType} leave balance. Employee has ${availableDays} day(s) available.`,
-        });
+        throw createError(`Insufficient leave balance for ${leaveRequest.leaveType} leave`);
       }
 
       balance[leaveRequest.leaveType] = availableDays - daysRequested;
@@ -144,6 +168,6 @@ export const updateLeaveStatus = async (req, res) => {
     return res.json(leaveRequest);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Failed to update leave request status.' });
+    next(error);
   }
 };

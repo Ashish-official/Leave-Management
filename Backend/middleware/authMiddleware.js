@@ -1,10 +1,5 @@
 import jwt from 'jsonwebtoken';
-
-const createError = (message, statusCode) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-};
+import createError from '../utils/createError.js';
 
 /**
  * Verify JWT token from the Authorization header and attach decoded payload to req.user.
@@ -17,7 +12,7 @@ export const verifyToken = (req, res, next) => {
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (error) {

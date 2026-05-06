@@ -2,22 +2,30 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import LeaveBalance from '../models/LeaveBalance.js';
-
-const createError = (message, statusCode = 400) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-};
+import createError from '../utils/createError.js';
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const generateToken = (user) => {
   return jwt.sign(
     { id: user._id, name: user.name, role: user.role },
-    process.env.JWT_SECRET || 'secret',
+    process.env.JWT_SECRET,
     { expiresIn: '1h' }
   );
 };
+
+const buildUserResponse = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  employeeId: user.employeeId,
+  department: user.department,
+  designation: user.designation,
+  phone: user.phone,
+  joiningDate: user.joiningDate,
+  isActive: user.isActive,
+});
 
 /**
  * Register a new user and return a JWT token with user details.
@@ -67,6 +75,7 @@ export const register = async (req, res, next) => {
 
     return res.status(201).json({
       token: generateToken(user),
+      user: buildUserResponse(user),
       name: user.name,
       role: user.role,
     });
@@ -97,6 +106,10 @@ export const login = async (req, res, next) => {
       throw createError('Invalid credentials');
     }
 
+    if (!user.isActive) {
+      throw createError('Account is inactive', 403);
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       throw createError('Invalid credentials');
@@ -104,9 +117,25 @@ export const login = async (req, res, next) => {
 
     return res.json({
       token: generateToken(user),
+      user: buildUserResponse(user),
       name: user.name,
       role: user.role,
     });
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};
+
+export const getMe = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+
+    if (!user) {
+      throw createError('User not found', 404);
+    }
+
+    return res.json(buildUserResponse(user));
   } catch (error) {
     console.error(error);
     next(error);

@@ -1,13 +1,8 @@
 import LeaveRequest from '../models/LeaveRequest.js';
 import LeaveBalance from '../models/LeaveBalance.js';
+import createError from '../utils/createError.js';
 
 const validLeaveTypes = ['sick', 'casual', 'annual'];
-
-const createError = (message, statusCode = 400) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-};
 
 const getLeaveDays = (startDate, endDate) => {
   const start = new Date(startDate);
@@ -18,6 +13,33 @@ const getLeaveDays = (startDate, endDate) => {
 };
 
 const getEmployeeId = (req) => req.user._id || req.user.id;
+
+const getPendingLeaveDays = async (employeeId, leaveType) => {
+  const pendingLeaves = await LeaveRequest.find({
+    userId: employeeId,
+    leaveType,
+    status: 'PENDING',
+  });
+
+  return pendingLeaves.reduce((total, leave) => {
+    return total + getLeaveDays(leave.startDate, leave.endDate);
+  }, 0);
+};
+
+const hasOverlappingLeave = async (employeeId, start, end, excludedLeaveId) => {
+  const filters = {
+    userId: employeeId,
+    status: { $in: ['PENDING', 'APPROVED'] },
+    startDate: { $lte: end },
+    endDate: { $gte: start },
+  };
+
+  if (excludedLeaveId) {
+    filters._id = { $ne: excludedLeaveId };
+  }
+
+  return LeaveRequest.exists(filters);
+};
 
 export const applyLeave = async (req, res, next) => {
   try {
@@ -70,6 +92,11 @@ export const applyLeave = async (req, res, next) => {
       throw createError('The requested leave duration must be at least one day');
     }
 
+    const overlappingLeave = await hasOverlappingLeave(employeeId, start, end);
+    if (overlappingLeave) {
+      throw createError('You already have a pending or approved leave request for these dates');
+    }
+
     const balance = await LeaveBalance.createDefaultForEmployee(employeeId);
 
     const availableDays = balance[normalizedType];
@@ -77,7 +104,10 @@ export const applyLeave = async (req, res, next) => {
       throw createError('Leave balance type not configured', 500);
     }
 
-    if (availableDays < daysRequested) {
+    const pendingDays = await getPendingLeaveDays(employeeId, normalizedType);
+    const effectiveAvailableDays = availableDays - pendingDays;
+
+    if (effectiveAvailableDays < daysRequested) {
       throw createError(`Insufficient leave balance for ${normalizedType} leave`);
     }
 
@@ -134,7 +164,7 @@ export const getAllLeaves = async (req, res, next) => {
 
 export const updateLeaveStatus = async (req, res, next) => {
   try {
-    const { status } = req.body;
+    const { status, rejectionReason } = req.body;
 
     if (!['APPROVED', 'REJECTED'].includes(status)) {
       throw createError('Status must be APPROVED or REJECTED');
@@ -162,7 +192,39 @@ export const updateLeaveStatus = async (req, res, next) => {
       await balance.save();
     }
 
+    if (status === 'REJECTED' && rejectionReason) {
+      leaveRequest.rejectionReason = String(rejectionReason).trim();
+    }
+
     leaveRequest.status = status;
+    leaveRequest.reviewedBy = getEmployeeId(req);
+    leaveRequest.reviewedAt = new Date();
+    await leaveRequest.save();
+
+    return res.json(leaveRequest);
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};
+
+export const cancelMyLeave = async (req, res, next) => {
+  try {
+    const employeeId = getEmployeeId(req);
+    const leaveRequest = await LeaveRequest.findOne({
+      _id: req.params.id,
+      userId: employeeId,
+    });
+
+    if (!leaveRequest) {
+      throw createError('Leave request not found', 404);
+    }
+
+    if (leaveRequest.status !== 'PENDING') {
+      throw createError('Only pending leave requests can be cancelled');
+    }
+
+    leaveRequest.status = 'CANCELLED';
     await leaveRequest.save();
 
     return res.json(leaveRequest);

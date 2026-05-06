@@ -22,6 +22,34 @@ const userSchema = new mongoose.Schema({
     enum: ['employee', 'admin'],
     default: 'employee',
   },
+  employeeId: {
+    type: String,
+    trim: true,
+    sparse: true,
+    unique: true,
+  },
+  department: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  designation: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  phone: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  joiningDate: {
+    type: Date,
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

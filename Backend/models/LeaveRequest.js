@@ -34,8 +34,20 @@ const leaveRequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'APPROVED', 'REJECTED'],
+    enum: ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'],
     default: 'PENDING',
+  },
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  reviewedAt: {
+    type: Date,
+  },
+  rejectionReason: {
+    type: String,
+    trim: true,
+    default: '',
   },
 }, { timestamps: true });
 

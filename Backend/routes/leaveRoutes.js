@@ -2,6 +2,7 @@ import express from 'express';
 import { verifyToken, isAdmin } from '../middleware/authMiddleware.js';
 import {
   applyLeave,
+  cancelMyLeave,
   getAllLeaves,
   getMyLeaveBalance,
   getMyLeaves,
@@ -13,6 +14,7 @@ const router = express.Router();
 router.post('/apply', verifyToken, applyLeave);
 router.get('/my-leaves', verifyToken, getMyLeaves);
 router.get('/balance', verifyToken, getMyLeaveBalance);
+router.put('/:id/cancel', verifyToken, cancelMyLeave);
 router.get('/', verifyToken, isAdmin, getAllLeaves);
 router.put('/:id/status', verifyToken, isAdmin, updateLeaveStatus);
 
